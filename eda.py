@@ -8,7 +8,7 @@ This temporary script file is located here:
 import os
 import pandas as pd
 import numpy as np
-#from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 #from sklearn.preprocessing import normalize
 #from sklearn.metrics.pairwise import cosine_similarity
 #from nltk.corpus import stopwords
@@ -32,21 +32,28 @@ meta=meta.join(pd.get_dummies(meta['Type of Deprivation']))
 
 #get years?
 
+'''
+Opening text files
 
-#open txts
-f= 'data/allTextData/Blanqui-Textes_Choisi-1971-Nonfiction-N.txt'
+Bash command to convert everything to UTF-8 and omit invalid characters
+for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
+'''
+
+
+f= 'Bakunin-Confession_to_Tsar_Nicholas_I-1851-Nonfiction-Y-Prison.utf8.txt'
 with open(f,'r') as ex:
     text = ex.read()
 
-files = []
-texts = pd.DataFrame()
-for f in os.listdir("/mydir"):
-    if f.endswith(".txt"):
-        files.append(f)
-        meta
+texts = {}
+#texts = pd.DataFrame()
+for f in os.listdir("."):
+    if f.endswith("utf8.txt"):
+        with open(f,'r') as text:
+            texts[f]=text.read().decode()
+
 #open docx
 d=docx.opendocx('data/allTextData/Brown-Letter_dated_November_16-1859-Y.docx')
-dtext = docx.getdocumenttext(d)
+dtext = docx.getdocumenttext(d) #returns list of paragraphs
 
 #using existing features
 correlation = meta.corr().deprivation
