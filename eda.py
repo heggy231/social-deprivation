@@ -18,22 +18,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 #from nltk.stem.porter import PorterStemmer
 #from nltk.stem.snowball import SnowballStemmer
 #from nltk.stem.wordnet import WordNetLemmatizer
+from sklearn.linear_model import LogisticRegression
+from statsmodels.discrete.discrete_model import Logit
+from sklearn.cross_validation import train_test_split
+from sklearn.metrics import roc_curve
 
-'''
-Import metadata and files
 
-Note: 'pd.read_table' doesn't work so well
-'''
 
-meta = pd.read_excel('/data/modifiedDeprivedAuthorsTextAnalysis.xls')
-#binarize deprivation
 
-meta['deprivation']= meta['Deprivation? (Y/N)'].apply(lambda x: x=='Y')
-meta.drop(u'Deprivation? (Y/N)',axis=1)
-#make dummy variables for Type of deprivation and Genre, and author?
-meta=meta.join(pd.get_dummies(meta['Type of Deprivation']))
-
-#get years?
 
 '''
 Opening text files
@@ -87,9 +79,9 @@ if __name__ =='__main__':
     mfl = [x.lower() for x in meta.Filename.values]
     afl = [x.lower() for x in texts.keys()]
     
-    stringord = lambda a: [ord(c) for c in a]
-    import re
-    strip = lambda x: re.sub(r'\W+', '', x)
+#    stringord = lambda a: [ord(c) for c in a]
+#    import re
+#    strip = lambda x: re.sub(r'\W+', '', x)
     #strip more stuff
     
 #exploratory
@@ -111,3 +103,38 @@ def before_after(tokens,wordList):
                 output['after '+v].append(tokens[i+1])               
     return output
 
+"""
+Model Building
+Logit using statsmodels
+"""
+'''
+Import metadata and files
+
+Note: 'pd.read_table' doesn't work so well
+'''
+
+meta = pd.read_excel('/data/modifiedDeprivedAuthorsTextAnalysis.xls')
+#binarize deprivation
+
+meta['deprivation']= meta['Deprivation? (Y/N)'].apply(lambda x: x=='Y')
+#make dummy variables for Type of deprivation and Genre, and author?
+meta=meta.join(pd.get_dummies(meta['Type of Deprivation']))
+memoir = lambda x: 'Memoir' if 'Memoir' in x else x
+meta.Genre.apply(memoir)
+meta= meta.join(pd.get_dummies(meta.Genre))
+y = meta.pop('deprivation')
+to_drop=["Prison","Injury","Voluntary",u'Filename',              u'Author',        u'Name of Work',
+              u'Year Written',               u'Genre',  u'Deprivation? (Y/N)',
+       u'Type of Deprivation']
+features = meta.drop(to_drop,axis=1)
+features['intercept']=1
+#features['guesses']= features.i * 
+xtrain,xtest,ytrain,ytest = train_test_split(features,y)
+lo = Logit(ytrain,xtrain)
+result = lo.fit_regularized()
+fpr, tpr, _ = roc_curve(ytest,result.predict(xtest))
+from ggplot import *
+df = pd.DataFrame(dict(fpr=fpr, tpr=tpr))
+ggplot(df, aes(x='fpr', y='tpr')) +\
+    geom_line() +\
+    geom_abline(linetype='dashed')
