@@ -9,6 +9,8 @@ import os
 import pandas as pd
 import numpy as np
 import docx
+from collections import defaultdict
+from nltk import word_tokenize, pos_tag
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 #from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
@@ -39,6 +41,11 @@ Opening text files
 Bash command to convert everything to UTF-8 and omit invalid characters
 for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
 '''
+def tokenize(string):
+    string = string.lower()
+    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz .'",string)
+    return word_tokenize(string)
+
 
 #class corpus(object):
 def flatten(l):
@@ -50,6 +57,7 @@ def flatten(l):
     
 def load_corpus(directory):
     texts = {}
+    docs = {}
     for f in os.listdir(directory):
         print 'loading ', directory+f
         if f.endswith("txt8"):
@@ -57,8 +65,8 @@ def load_corpus(directory):
                 texts[f[:-1]]=text.read()#.decode()
         elif f.endswith('docx'):
             d = docx.opendocx(directory+f)
-            texts[f]=flatten(docx.getdocumenttext(d))
-    return texts
+            docs[f]=flatten(docx.getdocumenttext(d))
+    return texts, docs
 
 #open docx
 #def load_docx(directory):
@@ -75,10 +83,31 @@ correlation = meta.corr().deprivation
 
 
 if __name__ =='__main__':
-    texts =load_corpus("data/allTextData/")
+    texts,docs =load_corpus("data/allTextData/")
     mfl = [x.lower() for x in meta.Filename.values]
     afl = [x.lower() for x in texts.keys()]
     
     stringord = lambda a: [ord(c) for c in a]
     import re
     strip = lambda x: re.sub(r'\W+', '', x)
+    #strip more stuff
+    
+#exploratory
+tokens = [w.lower() for w in word_tokenize(texts['Berkman-Prison_Memoirs_of_an_Anarchist-1912-Y.txt'])]
+
+fpsp=['i','me','mine','my','myself','myselves']
+
+def count_fpsp(tokens):
+    return [(tokens.count(i),i) for i in fpsp]
+    
+
+def before_after(tokens,wordList):
+    #takes lowercase
+    output = defaultdict(list)
+    for i,v in enumerate(tokens):
+        if i!=0 and i!=len(tokens)-1:
+            if v in wordList:
+                output['before '+v].append(tokens[i-1])
+                output['after '+v].append(tokens[i+1])               
+    return output
+
