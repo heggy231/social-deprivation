@@ -1,10 +1,10 @@
 import os
 import pandas as pd
-import numpy as np
+#import numpy as np
 import docx
 from collections import defaultdict
-from nltk import word_tokenize, pos_tag
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from nltk import word_tokenize, pos_tag, Text
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, 
 #from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 #from nltk.corpus import stopwords
@@ -15,14 +15,13 @@ from sklearn.linear_model import LogisticRegression
 from statsmodels.discrete.discrete_model import Logit
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import roc_curve, f1_score,classification_report, accuracy_score
-from ggplot import *
+#from ggplot import *
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 from scipy import interp
 from sklearn.cross_validation import KFold
 from sklearn.preprocessing import StandardScaler
-
-
+from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 
 '''
 Opening text files
@@ -30,17 +29,17 @@ Opening text files
 Bash command to convert everything to UTF-8 and omit invalid characters
 for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
 '''
-def tokenize(string):
-    string = string.lower()
-    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz .'",string)
-    return word_tokenize(string)
+#def tokenize(string):
+#    string = string.lower()
+#    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
+#    return word_tokenize(string)
 
 #class corpus(object):
 def flatten(l):
     string = ''
     for s in l:
 #        string.join(s)
-        string += ' ' + s.encode('ascii', 'ignore')#.decode()
+        string += ' ' + s.encode('UTF-8', 'ignore')#.decode()
     return string.lower()
     
 def load_corpus(directory):
@@ -53,10 +52,11 @@ def load_corpus(directory):
                 texts[f[:-1]]=text.read()#.decode()
         elif f.endswith('docx'):
             d = docx.opendocx(directory+f)
-            docs[f]=flatten(docx.getdocumenttext(d))
+            docs[f]=flatten(docx.getdocumenttext(d))#converts to nltk text object
     return texts, docs
 
 fpsp=['i','me','mine','my','myself','myselves']
+fppp = ['we','us','ours','our','ourself','ourselves']
 
 def count_fpsp(tokens):
     return [(tokens.count(i),i) for i in fpsp]
@@ -71,6 +71,12 @@ def before_after(tokens,wordList):
                 output['after '+v].append(tokens[i+1])               
     return output
 
+def print_before_after(tokens,wordList):
+    for i,v in enumerate(tokens):
+        if i!=0 and i!=len(tokens)-1:
+            if v in wordList:
+                print tokens[i-1], ' ', v, ' ', tokens[i+1]
+                
 def plot_roc(X, y, clf_class,n_folds=5, **kwargs):
     plt.figure(1,figsize=(12,12))
     scaler = StandardScaler()
@@ -129,36 +135,64 @@ def assess_model(model,xtest,ytest):
     print confusion_matrix(ytest,r.predict(xtest))
     
 def match_filenames(filename,listOfFilenames):
+    extra_words = ['Injury',              u'Prison',
+                 u'Voluntary',               u'Essay',             u'Fiction',
+                    u'Letter',             u'Letters',              u'Lyrics',
+                 u'MathPaper',          u'Meditation',              u'Memoir',
+                u'Nonfiction',                u'Play',              u'Poetry',
+                    u'Quotes',              u'Speech']
     output = None
+    filename =set(filename)
     for f in listOfFilenames:
-        if f in filename:
+        fs = set(f)
+        if fs.issuperset(filename) or fs.issubset(filename):
             output = f
+#        else:
+#            for word in extra_words:
+#                stripped=filename.strip(word)
+#                if (f in stripped) or (stripped in f):
+#                    output = f
+#    if output==None:
+#        for f in listOfFilenames:
+#            some clever regex            
     return output
+    
+def vectorize(string,**kwargs):
+    c = CountVectorizer(decode_error='replace',strip_accents='unicode')
+    d=c.fit_transform(string.split(' ')).todense()
+    z = TfidfTransformer(**kwargs)#norm=None,smooth_idf=True,sublinear_tf=True
+    return z.fit_transform(d).todense()
+    
     
 if __name__ =='__main__':
     texts,docs =load_corpus("data/allTextData/")
-    mfl = [x.lower() for x in meta.Filename.values]
-    afl = [x.lower() for x in texts.keys()]
-    filter(isalnum,mfl)
-    matching_files=[x in texts.keys() for x in meta.Filename.values]
-    
-    missing_files = meta[map(lambda x: not x,matching_files)].Filename
+#    mfl = [x.lower() for x in meta.Filename.values]
+#    afl = [x.lower() for x in texts.keys()]
+#    filter(isalnum,mfl)
+#    matching_files=[x in texts.keys() for x in meta.Filename.values]
+#    
+#    missing_files = meta[map(lambda x: not x,matching_files)].Filename
     dtext = defaultdict(str)
     dtext.update(texts)
+    dtext.update(docs)
     meta = pd.read_excel('/data/modifiedDeprivedAuthorsTextAnalysis.xls')
     #binarize deprivation
     meta['deprivation']= meta['Deprivation? (Y/N)'].apply(lambda x: x=='Y')
     #make dummy variables for Type of deprivation and Genre, and author?
     meta=meta.join(pd.get_dummies(meta['Type of Deprivation']))
-    memoir = lambda x: 'Memoir' if 'Memoir' in x else x
+    memoir = lambda x: 'Memoir' if 'Memoir' in x else x #fix this
     meta['Genre'] = meta.Genre.apply(memoir)
     meta= meta.join(pd.get_dummies(meta.Genre))
-    meta['text'] = meta.actualFilenames.apply(lambda x: dtext[x])
+    meta['actualFilename']=meta.Filename.apply(lambda x: match_filenames(x, dtext.keys()))
+    meta['text'] = meta.actualFilename.apply(lambda x: dtext[x])
     #    stringord = lambda a: [ord(c) for c in a]
     #    import re
     #    strip = lambda x: re.sub(r'\W+', '', x)
         #strip more stuff
-        
+    
+    #vectorize and tf-idf
+
+    
     #exploratory
     tokens = [w.lower() for w in word_tokenize(texts['Berkman-Prison_Memoirs_of_an_Anarchist-1912-Y.txt'])]
     
