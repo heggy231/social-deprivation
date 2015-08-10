@@ -1,20 +1,20 @@
 import os
 import pandas as pd
-#import numpy as np
+import numpy as np
 import docx
 from collections import defaultdict
 from nltk import word_tokenize, pos_tag, Text
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer 
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
 #from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 #from nltk.corpus import stopwords
 #from nltk.stem.porter import PorterStemmer
-#from nltk.stem.snowball import SnowballStemmer
+from nltk.stem.snowball import SnowballStemmer
 #from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.linear_model import LogisticRegression
 from statsmodels.discrete.discrete_model import Logit
 from sklearn.cross_validation import train_test_split
-from sklearn.metrics import roc_curve, f1_score,classification_report, accuracy_score
+from sklearn.metrics import roc_curve, f1_score,classification_report, accuracy_score,confusion_matrix
 #from ggplot import *
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
@@ -23,20 +23,27 @@ from sklearn.cross_validation import KFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 import re
+import codecs
 '''
 Opening text files
 
 Bash command to convert everything to UTF-8 and omit invalid characters
 for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
 '''
-#def tokenize(string):
-#    string = string.lower()
-#    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
-#    return word_tokenize(string)
-
-#class corpus(object):
-def flatten(l):
+def tokenize(string):
+    string = string.lower()
     
+    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
+    words= word_tokenize(string)
+    out = []
+    stopwords = ['to','the','a']
+    s=SnowballStemmer('english')
+    for word in words:
+        if word not in stopwords:
+            out.append(s.stem(word))
+    return out
+
+def flatten(l):    
     string = ''
     for s in l:
 #        string.join(s)
@@ -47,10 +54,10 @@ def load_corpus(directory):
     texts = {}
     docs = {}
     for f in os.listdir(directory):
-        print 'loading ', directory+f
+        print 'Loading: ', directory+f
         if f.endswith("txt8"):
-            with open(directory+f,'r') as text:
-                texts[f[:-1]]=text.read()#.decode()
+            with codecs.open(directory+f,'r','ascii','ignore') as text:
+                texts[f[:-1]]=text.read()
         elif f.endswith('docx'):
             d = docx.clean(docx.opendocx(directory+f))
             docs[f]=flatten(docx.getdocumenttext(d))#converts to nltk text object
@@ -116,11 +123,11 @@ def plot_roc(X, y, clf_class,n_folds=5, **kwargs):
     plt.title('Receiver operating characteristic')
     plt.legend(loc="lower right")
     plt.show()
-    predictions = clf.predict(X)
-    print 'accuracy: ', accuracy_score(y,predictions)
-    print classification_report(y, predictions)
-    print 'confusion matrix: '
-    print confusion_matrix(y,predictions)
+#    predictions = clf.predict(X)
+#    print 'accuracy: ', accuracy_score(y,predictions)
+#    print classification_report(y, predictions)
+#    print 'confusion matrix: '
+#    print confusion_matrix(y,predictions)
     
 def assess_model(model,xtest,ytest):
     predictions = model.predict(xtest)
@@ -133,7 +140,7 @@ def assess_model(model,xtest,ytest):
     print 'accuracy: ', accuracy_score(ytest,predictions)
     print classification_report(ytest, predictions)
     print 'confusion matrix: '
-    print confusion_matrix(ytest,r.predict(xtest))
+    print confusion_matrix(ytest,predictions)
     
 def match_filenames(filename,listOfFilenames):
     output = None
@@ -151,21 +158,9 @@ def match_filenames(filename,listOfFilenames):
                 output = f         
     return output
     
-def vectorize(string,**kwargs):
-    c = CountVectorizer(decode_error='replace',strip_accents='unicode')
-    d=c.fit_transform(string.split(' ')).todense()
-    z = TfidfTransformer(**kwargs)#norm=None,smooth_idf=True,sublinear_tf=True
-    return z.fit_transform(d).todense()
-    
-    
+        
 if __name__ =='__main__':
     texts,docs =load_corpus("data/allTextData/")
-#    mfl = [x.lower() for x in meta.Filename.values]
-#    afl = [x.lower() for x in texts.keys()]
-#    filter(isalnum,mfl)
-#    matching_files=[x in texts.keys() for x in meta.Filename.values]
-#    
-#    missing_files = meta[map(lambda x: not x,matching_files)].Filename
     dtext = defaultdict(str)
     dtext.update(texts)
     dtext.update(docs)
@@ -174,38 +169,40 @@ if __name__ =='__main__':
     meta['deprivation']= meta['Deprivation? (Y/N)'].apply(lambda x: x=='Y')
     #make dummy variables for Type of deprivation and Genre, and author?
     meta=meta.join(pd.get_dummies(meta['Type of Deprivation']))
-    memoir = lambda x: 'Memoir' if 'Memoir' in x else x #fix this
+    memoir = lambda x: 'Memoir' if 'Memoir' in x else x #change this to Autobio?
     meta['Genre'] = meta.Genre.apply(memoir)
     meta= meta.join(pd.get_dummies(meta.Genre))
     meta['actualFilename']=meta.Filename.apply(lambda x: match_filenames(x, dtext.keys()))
     meta['text'] = meta.actualFilename.apply(lambda x: dtext[x])
-    #    stringord = lambda a: [ord(c) for c in a]
-    #    import re
-    #    strip = lambda x: re.sub(r'\W+', '', x)
-        #strip more stuff
-    
-    #vectorize and tf-idf
 
-    
-    #exploratory
-    
     #using existing features
     correlation = meta.corr().deprivation
     
-    
-    y = meta.pop('deprivation')
-    to_drop=["Prison","Injury","Voluntary",u'Filename', u'Author', u'Name of Work',
-                  u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
-                  'WC']
-    features = meta.drop(to_drop,axis=1)
-    tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1)
-    tfidf=tf.fit_transform(meta.text.values)
+
     #features['intercept']=1
-    #features['guesses']= features.i * 
+    
+    #tf-idf
+    #using minimum document frequency of 3 gives around 35000 features, and seems reasonable for picking out topics
+    tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=3)
+    
+    meta=meta.join(pd.DataFrame(tf.fit_transform(meta.text.values).todense()))
+#    #tf-idf on self referential 2-grams
+#    tf2 = TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=2,vocabulary=fpsp)
+#    tfidf2=tf2.fit_transform(meta.text.values)
+        #strip unnecessary columns
+    y = meta.pop('deprivation')
+    to_drop=["Prison","Injury","Voluntary",u'Filename', 'actualFilename', u'Author', u'Name of Work',
+                  u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
+                  'WC','text']
+    features = meta.drop(to_drop,axis=1)
     xtrain,xtest,ytrain,ytest = train_test_split(features,y)
+
     '''Naive Bayes'''
+    #fill in assumptions here
     m = MultinomialNB()
-    m.fit(xtrain)
+    m.fit(xtrain,ytrain)
+    
+    b= BernoulliNB()
     
     '''Logit'''
     #yields non-singular matrix for genres
@@ -246,13 +243,6 @@ if __name__ =='__main__':
     accuracy_score(ytest,l.predict(xtest))
     classification_report(ytest,l.predict(xtest))
     plot_roc(features,y,LDA)
-
-#open docx
-#def load_docx(directory):
-#d=docx.opendocx('data/allTextData/docx/Brown-Letter_dated_November_16-1859-Y.docx')
-#dtext = docx.getdocumenttext(d) #returns list of paragraphs
-
-#tf-ifd
 
 #parts of speech
 
