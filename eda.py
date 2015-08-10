@@ -4,7 +4,7 @@ import pandas as pd
 import docx
 from collections import defaultdict
 from nltk import word_tokenize, pos_tag, Text
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, 
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer 
 #from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 #from nltk.corpus import stopwords
@@ -22,7 +22,7 @@ from scipy import interp
 from sklearn.cross_validation import KFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
-
+import re
 '''
 Opening text files
 
@@ -36,12 +36,13 @@ for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
 
 #class corpus(object):
 def flatten(l):
+    
     string = ''
     for s in l:
 #        string.join(s)
-        string += ' ' + s.encode('UTF-8', 'ignore')#.decode()
-    return string.lower()
-    
+        string += ' ' + s.encode('ascii','ignore')
+    return string#.lower()
+
 def load_corpus(directory):
     texts = {}
     docs = {}
@@ -51,7 +52,7 @@ def load_corpus(directory):
             with open(directory+f,'r') as text:
                 texts[f[:-1]]=text.read()#.decode()
         elif f.endswith('docx'):
-            d = docx.opendocx(directory+f)
+            d = docx.clean(docx.opendocx(directory+f))
             docs[f]=flatten(docx.getdocumenttext(d))#converts to nltk text object
     return texts, docs
 
@@ -135,20 +136,14 @@ def assess_model(model,xtest,ytest):
     print confusion_matrix(ytest,r.predict(xtest))
     
 def match_filenames(filename,listOfFilenames):
-    extra_words = ['Injury',              u'Prison',
-                 u'Voluntary',               u'Essay',             u'Fiction',
-                    u'Letter',             u'Letters',              u'Lyrics',
-                 u'MathPaper',          u'Meditation',              u'Memoir',
-                u'Nonfiction',                u'Play',              u'Poetry',
-                    u'Quotes',              u'Speech']
     output = None
-    chars = ["'",'_','-','Y','N','.','txt','docx']
     filename =set(filename)
     for f in listOfFilenames:
         fs = set(str(f))
         if fs.issuperset(filename) or fs.issubset(filename):
             output = f
         else:
+            chars = ["'",'_','-','Y','N','.','txt','docx']
             for c in chars:
                 fs.discard(c)
                 filename.discard(c)
@@ -193,7 +188,6 @@ if __name__ =='__main__':
 
     
     #exploratory
-    tokens = [w.lower() for w in word_tokenize(texts['Berkman-Prison_Memoirs_of_an_Anarchist-1912-Y.txt'])]
     
     #using existing features
     correlation = meta.corr().deprivation
@@ -204,9 +198,14 @@ if __name__ =='__main__':
                   u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
                   'WC']
     features = meta.drop(to_drop,axis=1)
+    tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1)
+    tfidf=tf.fit_transform(meta.text.values)
     #features['intercept']=1
     #features['guesses']= features.i * 
     xtrain,xtest,ytrain,ytest = train_test_split(features,y)
+    '''Naive Bayes'''
+    m = MultinomialNB()
+    m.fit(xtrain)
     
     '''Logit'''
     #yields non-singular matrix for genres
