@@ -142,19 +142,18 @@ def match_filenames(filename,listOfFilenames):
                 u'Nonfiction',                u'Play',              u'Poetry',
                     u'Quotes',              u'Speech']
     output = None
+    chars = ["'",'_','-','Y','N','.','txt','docx']
     filename =set(filename)
     for f in listOfFilenames:
-        fs = set(f)
+        fs = set(str(f))
         if fs.issuperset(filename) or fs.issubset(filename):
             output = f
-#        else:
-#            for word in extra_words:
-#                stripped=filename.strip(word)
-#                if (f in stripped) or (stripped in f):
-#                    output = f
-#    if output==None:
-#        for f in listOfFilenames:
-#            some clever regex            
+        else:
+            for c in chars:
+                fs.discard(c)
+                filename.discard(c)
+            if fs.issuperset(filename) or fs.issubset(filename):
+                output = f         
     return output
     
 def vectorize(string,**kwargs):
