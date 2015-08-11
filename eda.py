@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import docx
-from collections import defaultdict
+from collections import defaultdict, Counter
 from nltk import word_tokenize, pos_tag, Text
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
 #from sklearn.preprocessing import normalize
@@ -42,6 +42,13 @@ def tokenize(string):
         if word not in stopwords:
             out.append(s.stem(word))
     return out
+def fpspFilter(nGrams):
+    out = []
+    for nGram in nGrams:
+        for i in fpsp:
+            if i in nGram.split(' '):
+                out.append(nGram)
+    return out
 
 def flatten(l):    
     string = ''
@@ -65,6 +72,7 @@ def load_corpus(directory):
 
 fpsp=['i','me','mine','my','myself','myselves']
 fppp = ['we','us','ours','our','ourself','ourselves']
+tppp = ['they','them','their','theirs','themself','themselves']
 
 def count_fpsp(tokens):
     return [(tokens.count(i),i) for i in fpsp]
@@ -79,6 +87,20 @@ def before_after(tokens,wordList):
                 output['after '+v].append(tokens[i+1])               
     return output
 
+def twoGram(string,wordList):
+    out=Counter()
+    string = string.lower()    
+    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
+    tokens = word_tokenize(string)
+    wordCount=len(tokens)
+    invWordCount=1/float(wordCount+1)
+    for i,token in enumerate(tokens):
+        if i!=0 and i!=wordCount-1:
+            if token in wordList:
+                out[(tokens[i-1],token)]+=invWordCount
+                out[(token, tokens[i+1])]+=invWordCount
+    return pd.Series(out)
+        
 def print_before_after(tokens,wordList):
     for i,v in enumerate(tokens):
         if i!=0 and i!=len(tokens)-1:
@@ -123,20 +145,15 @@ def plot_roc(X, y, clf_class,n_folds=5, **kwargs):
     plt.title('Receiver operating characteristic')
     plt.legend(loc="lower right")
     plt.show()
-#    predictions = clf.predict(X)
-#    print 'accuracy: ', accuracy_score(y,predictions)
-#    print classification_report(y, predictions)
-#    print 'confusion matrix: '
-#    print confusion_matrix(y,predictions)
     
 def assess_model(model,xtest,ytest):
     predictions = model.predict(xtest)
-    tp = sum(predictions*ytest)
-    fn = sum((1-predictions)*ytest)
-    tn = sum((1-predictions)*(1-ytest))
-    fp = sum(predictions*(1-ytest))
-    p = sum(ytest)
-    f = sum(1-ytest)
+#    tp = sum(predictions*ytest)
+#    fn = sum((1-predictions)*ytest)
+#    tn = sum((1-predictions)*(1-ytest))
+#    fp = sum(predictions*(1-ytest))
+#    p = sum(ytest)
+#    f = sum(1-ytest)
     print 'accuracy: ', accuracy_score(ytest,predictions)
     print classification_report(ytest, predictions)
     print 'confusion matrix: '
@@ -174,38 +191,40 @@ if __name__ =='__main__':
     meta= meta.join(pd.get_dummies(meta.Genre))
     meta['actualFilename']=meta.Filename.apply(lambda x: match_filenames(x, dtext.keys()))
     meta['text'] = meta.actualFilename.apply(lambda x: dtext[x])
-
-    #using existing features
-    correlation = meta.corr().deprivation
-    
-
-    #features['intercept']=1
-    
+#    meta['fpspGrams']=meta.text.apply(lambda x: twoGram(x,fpsp))
+#    meta['fpppGrams']=meta.text.apply(lambda x: twoGram(x,fppp))    
+    meta=meta.text.apply(lambda x: twoGram(x,fpsp+fppp))
+#    meta.text.apply(lambda x: twoGram(x,fppp))
+#    cnt = Counter()
+#    for d in meta.twoGrams.values:
+#        cnt.update(d)
     #tf-idf
     #using minimum document frequency of 3 gives around 35000 features, and seems reasonable for picking out topics
     tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=3)
     
-    meta=meta.join(pd.DataFrame(tf.fit_transform(meta.text.values).todense()))
-#    #tf-idf on self referential 2-grams
-#    tf2 = TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=2,vocabulary=fpsp)
+    features=meta.join(pd.DataFrame(tf.fit_transform(meta.text.values).todense()))
+    #tf-idf on self referential 2-grams
+#    tf2 = TfidfVectorizer(ngram_range=(2,2),strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=2,vocabulary=fpsp)
 #    tfidf2=tf2.fit_transform(meta.text.values)
         #strip unnecessary columns
-    y = meta.pop('deprivation')
+    y = features.pop('deprivation')
     to_drop=["Prison","Injury","Voluntary",u'Filename', 'actualFilename', u'Author', u'Name of Work',
                   u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
                   'WC','text']
-    features = meta.drop(to_drop,axis=1)
+    features = features.drop(to_drop,axis=1)
     xtrain,xtest,ytrain,ytest = train_test_split(features,y)
 
     '''Naive Bayes'''
-    #fill in assumptions here
-    m = MultinomialNB()
-    m.fit(xtrain,ytrain)
-    
-    b= BernoulliNB()
+    #assuming that there is colinearity
+#    m = MultinomialNB()
+#    m.fit(xtrain,ytrain)
+    plot_roc(features,y,MultinomialNB,n_folds=5)
+
     
     '''Logit'''
     #yields non-singular matrix for genres
+    features['intercept']=1
+    xtrain,xtest,ytrain,ytest = train_test_split(features,y)
     lo = Logit(ytrain,xtrain)
     result = lo.fit_regularized()
     fpr, tpr, _ = roc_curve(ytest,result.predict(xtest))
