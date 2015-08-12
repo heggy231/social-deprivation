@@ -31,7 +31,7 @@ Bash command to convert everything to UTF-8 and omit invalid characters
 for file in *.txt; do iconv -c -t utf-8 "$file" -o "${file%.txt}.utf8.txt"; done
 '''
 def tokenize(string):
-    string = string.lower()
+#    string = string.lower()
     
     string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
     words= word_tokenize(string)
@@ -42,6 +42,7 @@ def tokenize(string):
         if word not in stopwords:
             out.append(s.stem(word))
     return out
+    
 def fpspFilter(nGrams):
     out = []
     for nGram in nGrams:
@@ -68,14 +69,11 @@ def load_corpus(directory):
         elif f.endswith('docx'):
             d = docx.clean(docx.opendocx(directory+f))
             docs[f]=flatten(docx.getdocumenttext(d))#converts to nltk text object
-    return texts, docs
+    return texts,docs
 
 fpsp=['i','me','mine','my','myself','myselves']
 fppp = ['we','us','ours','our','ourself','ourselves']
 tppp = ['they','them','their','theirs','themself','themselves']
-
-def count_fpsp(tokens):
-    return [(tokens.count(i),i) for i in fpsp]
     
 def before_after(tokens,wordList):
     #takes lowercase
@@ -90,16 +88,29 @@ def before_after(tokens,wordList):
 def twoGram(string,wordList):
     out=Counter()
     string = string.lower()    
-    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz '",string)
+    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz ",string)
     tokens = word_tokenize(string)
     wordCount=len(tokens)
     invWordCount=1/float(wordCount+1)
     for i,token in enumerate(tokens):
         if i!=0 and i!=wordCount-1:
             if token in wordList:
-                out[(tokens[i-1],token)]+=invWordCount
-                out[(token, tokens[i+1])]+=invWordCount
+                out[tokens[i-1]+'_'+token]+=invWordCount
+                out[token+'_'+ tokens[i+1]]+=invWordCount
     return pd.Series(out)
+
+#def threeGram(string,wordList):
+#    out=Counter()
+#    string = string.lower()    
+#    string = filter(lambda x: x in "abcdefghijklmnopqrstuvwxyz ",string)
+#    tokens = word_tokenize(string)
+#    wordCount=len(tokens)
+#    invWordCount=1/float(wordCount+1)
+#    for i,token in enumerate(tokens):
+#        if i!=0 and i<wordCount-2:
+#            if token in wordList:
+#                out[token+'_'+ tokens[i+1]+'_'+tokens[i+2]]+=invWordCount
+#    return pd.Series(out)
         
 def print_before_after(tokens,wordList):
     for i,v in enumerate(tokens):
@@ -161,20 +172,29 @@ def assess_model(model,xtest,ytest):
     
 def match_filenames(filename,listOfFilenames):
     output = None
-    filename =set(filename)
-    for f in listOfFilenames:
-        fs = set(str(f))
-        if fs.issuperset(filename) or fs.issubset(filename):
-            output = f
-        else:
-            chars = ["'",'_','-','Y','N','.','txt','docx']
-            for c in chars:
-                fs.discard(c)
-                filename.discard(c)
+    if filename in listOfFilenames:# fix this
+        output=filename
+    else:
+        filename =set(filename)
+        for f in listOfFilenames:
+            fs = set(str(f))
             if fs.issuperset(filename) or fs.issubset(filename):
-                output = f         
+                output = f
+            else:
+                chars = ["'",'_','-','Y','N','.','txt','docx']
+                for c in chars:
+                    fs.discard(c)
+                    filename.discard(c)
+                if fs.issuperset(filename) or fs.issubset(filename):
+                    output = f         
     return output
-    
+
+def parse_years(s):
+    l = len(str(s))
+    if (l==3) or (l==4):
+        return int(s)
+    else:
+        return int(s[-4:])
         
 if __name__ =='__main__':
     texts,docs =load_corpus("data/allTextData/")
@@ -190,10 +210,12 @@ if __name__ =='__main__':
     meta['Genre'] = meta.Genre.apply(memoir)
     meta= meta.join(pd.get_dummies(meta.Genre))
     meta['actualFilename']=meta.Filename.apply(lambda x: match_filenames(x, dtext.keys()))
-    meta['text'] = meta.actualFilename.apply(lambda x: dtext[x])
-#    meta['fpspGrams']=meta.text.apply(lambda x: twoGram(x,fpsp))
-#    meta['fpppGrams']=meta.text.apply(lambda x: twoGram(x,fppp))    
-    meta=meta.text.apply(lambda x: twoGram(x,fpsp+fppp))
+    meta['text1'] = meta.actualFilename.apply(lambda x: dtext[x])
+    meta['year1']=meta['Year Written'].apply(parse_years)
+#    meta['fpspGrams']=meta.text1.apply(lambda x: twoGram(x,fpsp))
+#    meta['fpppGrams']=mmetaeta.text.apply(lambda x: twoGram(x,fppp))    
+    twoGrams=meta.text1.apply(lambda x: twoGram(x,fpsp+fppp))
+    threeGrams = meta.text1.apply(lambda x: threeGram(x,['i']))
 #    meta.text.apply(lambda x: twoGram(x,fppp))
 #    cnt = Counter()
 #    for d in meta.twoGrams.values:
@@ -201,8 +223,10 @@ if __name__ =='__main__':
     #tf-idf
     #using minimum document frequency of 3 gives around 35000 features, and seems reasonable for picking out topics
     tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=3)
-    
-    features=meta.join(pd.DataFrame(tf.fit_transform(meta.text.values).todense()))
+    tfidf = tf.fit_transform(meta.text1.values)
+    features=meta.join(pd.DataFrame(tfidf.todense()))
+    features = features.join(twoGrams)
+#    meta
     #tf-idf on self referential 2-grams
 #    tf2 = TfidfVectorizer(ngram_range=(2,2),strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=2,vocabulary=fpsp)
 #    tfidf2=tf2.fit_transform(meta.text.values)
@@ -210,29 +234,55 @@ if __name__ =='__main__':
     y = features.pop('deprivation')
     to_drop=["Prison","Injury","Voluntary",u'Filename', 'actualFilename', u'Author', u'Name of Work',
                   u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
-                  'WC','text']
+                  'WC','WPS','text1']#WPS has many outliars in it and does not seem reliable
     features = features.drop(to_drop,axis=1)
     xtrain,xtest,ytrain,ytest = train_test_split(features,y)
-
+    '''Dimensionality Reduction'''
+    p=PCA(n_components=2)
+    pcaFeatures=p.fit_transform(features.fillna(0),y)
+    
+    
+    from sklearn.decomposition import TruncatedSVD
+    t=TruncatedSVD(n_components=4)#4 features did well with random forest
+    truncatedFeatures=t.fit_transform(features.fillna(0),y)  
+#    plot_roc(truncatedFeatures,y,LogisticRegression)#does not do well with truncated features
+    plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#this did really well with 2 components
+    
+    #plot with true labels
+    t=TruncatedSVD(n_components=2)
+    truncatedFeatures=t.fit_transform(features.fillna(0),y)
+    plt.scatter(truncatedFeatures.T[0],truncatedFeatures.T[1],c=y)
+    plt.scatter(pcaFeatures.T[0],pcaFeatures.T[1],c=y)
+    
+#    Boethius has the two outlying points
+    
+    '''K-means'''    
+    from sklearn.cluster import KMeans
+    k=KMeans(n_clusters=4)#4 is at an elbow for sse
+    km=k.fit_transform(truncatedFeatures) 
+    
+    
     '''Naive Bayes'''
     #assuming that there is colinearity
 #    m = MultinomialNB()
 #    m.fit(xtrain,ytrain)
-    plot_roc(features,y,MultinomialNB,n_folds=5)
-
+    plot_roc(features.fillna(0),y,MultinomialNB,n_folds=5)
+    plot_roc(features.fillna(0),y,BernoulliNB,n_folds=5)
     
     '''Logit'''
     #yields non-singular matrix for genres
-    features['intercept']=1
-    xtrain,xtest,ytrain,ytest = train_test_split(features,y)
-    lo = Logit(ytrain,xtrain)
-    result = lo.fit_regularized()
-    fpr, tpr, _ = roc_curve(ytest,result.predict(xtest))
-    from ggplot import *
-    df = pd.DataFrame(dict(fpr=fpr, tpr=tpr))
-    ggplot(df, aes(x='fpr', y='tpr')) +\
-        geom_line() +\
-        geom_abline(linetype='dashed')
+    from sklearn.linear_model import LogisticRegression
+    plot_roc(features.fillna(0),y,LogisticRegression)
+#    plot_roc(features.fillna(0),y,Logit,n_folds=5)
+#    xtrain,xtest,ytrain,ytest = train_test_split(features,y)
+#    lo = Logit(ytrain,xtrain)
+#    result = lo.fit_regularized()
+#    fpr, tpr, _ = roc_curve(ytest,result.predict(xtest))
+#    from ggplot import *
+#    df = pd.DataFrame(dict(fpr=fpr, tpr=tpr))
+#    ggplot(df, aes(x='fpr', y='tpr')) +\
+#        geom_line() +\
+#        geom_abline(linetype='dashed')
     
     '''Random Forest'''
     from sklearn.ensemble import RandomForestClassifier
@@ -241,11 +291,11 @@ if __name__ =='__main__':
     cm = confusion_matrix(ytest,r.predict(xtest))/float(len(xtest))
     accuracy_score(ytest,r.predict(xtest))
     classification_report(ytest,r.predict(xtest))
-    plot_roc(features,y,RandomForestClassifier, n_estimators=1000)
+    plot_roc(features.fillna(0),y,RandomForestClassifier, n_estimators=1000)
     
     '''Gradient Boosting '''
     from sklearn.ensemble import GradientBoostingClassifier
-    plot_roc(features,y,GradientBoostingClassifier,n_folds=3, n_estimators=100)
+    plot_roc(features.fillna(0),y,GradientBoostingClassifier, n_estimators=100)
     
     '''SVM'''
     from sklearn.svm import SVC
@@ -253,7 +303,7 @@ if __name__ =='__main__':
     s.fit(xtrain,ytrain)
     s.score(xtest,ytest)
     classification_report(ytest,s.predict(xtest))
-    plot_roc(features,y,SVC, probability=True)
+    plot_roc(features.fillna(0),y,SVC, probability=True)
     
     '''LDA?'''
     from sklearn.lda import LDA
@@ -261,7 +311,7 @@ if __name__ =='__main__':
     l.fit(xtrain,ytrain, store_covariance=1)
     accuracy_score(ytest,l.predict(xtest))
     classification_report(ytest,l.predict(xtest))
-    plot_roc(features,y,LDA)
+    plot_roc(features.fillna(0),y,LDA)
 
 #parts of speech
 
