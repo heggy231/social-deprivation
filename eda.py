@@ -268,7 +268,7 @@ if __name__ =='__main__':
     
     '''K-means'''    
     from sklearn.cluster import KMeans
-    k=KMeans(n_clusters=4)#4 is at an elbow for sse
+    k=KMeans(n_clusters=5)#5 is at an elbow for sse
     km=k.fit_transform(truncatedFeatures) 
     
     from sklearn import (cluster, datasets, decomposition, ensemble, lda, manifold, random_projection, preprocessing)
@@ -324,7 +324,7 @@ if __name__ =='__main__':
         ax.axis('off')
         ax.patch.set_visible(False)
         for i in range(X.shape[0]):
-            plt.text(X[i, 0], X[i, 1], str(1*y[i]),  fontdict={'weight': 'bold', 'size': 12})
+            plt.text(X[i, 0], X[i, 1], str(1*y[i]), col fontdict={'weight': 'bold', 'size': 12})
     
         plt.xticks([]), plt.yticks([])
         plt.ylim([-0.1,1.1])
@@ -335,7 +335,15 @@ if __name__ =='__main__':
     pca = decomposition.PCA(n_components=2)
     X_pca = pca.fit_transform(X_centered)
     plot_embedding(X_pca, y)
+    k.plot_k_sse(X_pca) #for 2 components 5 clusters
+    
+def print_features(topic, n):
+    indx = np.argsort(topic)
+    rv_indx = indx[::-1]
 
+    print features.loc[rv_indx[:n]]['title']
+        
+    
     '''Naive Bayes'''
     #assuming that there is colinearity
 #    m = MultinomialNB()
