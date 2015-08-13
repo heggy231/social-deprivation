@@ -195,13 +195,17 @@ def parse_years(s):
         return int(s)
     else:
         return int(s[-4:])
-        
+
+def load_pickeled_features():
+    features = pd.read_pickle('data/features_pickle.pkl')
+    return features
+       
 if __name__ =='__main__':
     texts,docs =load_corpus("data/allTextData/")
     dtext = defaultdict(str)
     dtext.update(texts)
     dtext.update(docs)
-    meta = pd.read_excel('/data/modifiedDeprivedAuthorsTextAnalysis.xls')
+    meta = pd.read_excel('data/modifiedDeprivedAuthorsTextAnalysis1.xls')
     #binarize deprivation
     meta['deprivation']= meta['Deprivation? (Y/N)'].apply(lambda x: x=='Y')
     #make dummy variables for Type of deprivation and Genre, and author?
@@ -215,13 +219,14 @@ if __name__ =='__main__':
 #    meta['fpspGrams']=meta.text1.apply(lambda x: twoGram(x,fpsp))
 #    meta['fpppGrams']=mmetaeta.text.apply(lambda x: twoGram(x,fppp))    
     twoGrams=meta.text1.apply(lambda x: twoGram(x,fpsp+fppp))
-    threeGrams = meta.text1.apply(lambda x: threeGram(x,['i']))
+#    threeGrams = meta.text1.apply(lambda x: threeGram(x,['i']))
 #    meta.text.apply(lambda x: twoGram(x,fppp))
 #    cnt = Counter()
 #    for d in meta.twoGrams.values:
 #        cnt.update(d)
     #tf-idf
     #using minimum document frequency of 3 gives around 35000 features, and seems reasonable for picking out topics
+    
     tf=TfidfVectorizer(strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=3)
     tfidf = tf.fit_transform(meta.text1.values)
     features=meta.join(pd.DataFrame(tfidf.todense()))
@@ -231,23 +236,28 @@ if __name__ =='__main__':
 #    tf2 = TfidfVectorizer(ngram_range=(2,2),strip_accents='unicode',norm=None,sublinear_tf=1,tokenizer=tokenize,min_df=2,vocabulary=fpsp)
 #    tfidf2=tf2.fit_transform(meta.text.values)
         #strip unnecessary columns
-    y = features.pop('deprivation')
+    
+    features = load_pickeled_features()
     to_drop=["Prison","Injury","Voluntary",u'Filename', 'actualFilename', u'Author', u'Name of Work',
                   u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
-                  'WC','WPS','text1']#WPS has many outliars in it and does not seem reliable
+                  'WC','WPS','text1','year1']#WPS has many outlires in it and does not seem reliable
     features = features.drop(to_drop,axis=1)
+    features=features.drop([13,14],axis=0) #dropping boethius since it seems to be so unique
+    features=features.reset_index()   
+    y = features.pop('deprivation')
+    y1=y.reset_index(drop=1)
     xtrain,xtest,ytrain,ytest = train_test_split(features,y)
     '''Dimensionality Reduction'''
+    from sklearn.decomposition import TruncatedSVD, PCA
+    
     p=PCA(n_components=2)
     pcaFeatures=p.fit_transform(features.fillna(0),y)
     
     
-    from sklearn.decomposition import TruncatedSVD
     t=TruncatedSVD(n_components=4)#4 features did well with random forest
     truncatedFeatures=t.fit_transform(features.fillna(0),y)  
 #    plot_roc(truncatedFeatures,y,LogisticRegression)#does not do well with truncated features
-    plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#this did really well with 2 components
-    
+    plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#does well with 4 features
     #plot with true labels
     t=TruncatedSVD(n_components=2)
     truncatedFeatures=t.fit_transform(features.fillna(0),y)
@@ -261,14 +271,79 @@ if __name__ =='__main__':
     k=KMeans(n_clusters=4)#4 is at an elbow for sse
     km=k.fit_transform(truncatedFeatures) 
     
+    from sklearn import (cluster, datasets, decomposition, ensemble, lda, manifold, random_projection, preprocessing)
+    def scree_plot(num_components, pca):
+        ind = np.arange(num_components)
+        vals = pca.explained_variance_ratio_
+        plt.figure(figsize=(10, 6), dpi=250)
+        ax = plt.subplot(111)
+        ax.bar(ind, vals, 0.35, 
+               color=[(0.949, 0.718, 0.004),
+                      (0.898, 0.49, 0.016),
+                      (0.863, 0, 0.188),
+                      (0.694, 0, 0.345),
+                      (0.486, 0.216, 0.541),
+                      (0.204, 0.396, 0.667),
+                      (0.035, 0.635, 0.459),
+                      (0.486, 0.722, 0.329),
+                     ])
     
+        ax.annotate(r"%d%%" % (int(vals[0]*100)), (ind[0]+0.2, vals[0]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%d%%" % (int(vals[1]*100)), (ind[1]+0.2, vals[1]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%d%%" % (int(vals[2]*100)), (ind[2]+0.2, vals[2]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%d%%" % (int(vals[3]*100)), (ind[3]+0.2, vals[3]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%d%%" % (int(vals[4]*100)), (ind[4]+0.2, vals[4]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%d%%" % (int(vals[5]*100)), (ind[5]+0.2, vals[5]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%s%%" % ((str(vals[6]*100)[:4 + (0-1)])), (ind[6]+0.2, vals[6]), va="bottom", ha="center", fontsize=12)
+        ax.annotate(r"%s%%" % ((str(vals[7]*100)[:4 + (0-1)])), (ind[7]+0.2, vals[7]), va="bottom", ha="center", fontsize=12)
+    
+        ax.set_xticklabels(ind, 
+                           fontsize=12)
+        ax.set_yticklabels(('0.00', '0.05', '0.10', '0.15', '0.20', '0.25'), fontsize=12)
+        ax.set_ylim(0, .25)
+        ax.set_xlim(0-0.45, 8+0.45)
+    
+        ax.xaxis.set_tick_params(width=0)
+        ax.yaxis.set_tick_params(width=2, length=12)
+    
+        ax.set_xlabel("Principal Component", fontsize=12)
+        ax.set_ylabel("Variance Explained (%)", fontsize=12)
+        plt.title("Scree Plot for the Digits Dataset", fontsize=16)
+
+#    plt.savefig("scree.png", dpi= 100)
+    X_centered = preprocessing.scale(features.fillna(0))
+    n=50
+    pca = decomposition.PCA(n_components=n)
+    X_pca = pca.fit_transform(X_centered)
+    scree_plot(n, pca)
+    def plot_embedding(X, y, title=None):
+        x_min, x_max = np.min(X, 0), np.max(X, 0)
+        X = (X - x_min) / (x_max - x_min)
+        plt.figure(figsize=(10, 6), dpi=250)
+        ax = plt.subplot(111)
+        ax.axis('off')
+        ax.patch.set_visible(False)
+        for i in range(X.shape[0]):
+            plt.text(X[i, 0], X[i, 1], str(1*y[i]),  fontdict={'weight': 'bold', 'size': 12})
+    
+        plt.xticks([]), plt.yticks([])
+        plt.ylim([-0.1,1.1])
+        plt.xlim([-0.1,1.1])
+    
+        if title is not None:
+            plt.title(title, fontsize=16)
+    pca = decomposition.PCA(n_components=2)
+    X_pca = pca.fit_transform(X_centered)
+    plot_embedding(X_pca, y)
+
     '''Naive Bayes'''
     #assuming that there is colinearity
 #    m = MultinomialNB()
 #    m.fit(xtrain,ytrain)
     plot_roc(features.fillna(0),y,MultinomialNB,n_folds=5)
     plot_roc(features.fillna(0),y,BernoulliNB,n_folds=5)
-    
+    plot_roc(truncatedFeatures,y,MultinomialNB,n_folds=5)
+    plot_roc(truncatedFeatures,y,BernoulliNB,n_folds=5)#performs horrbily
     '''Logit'''
     #yields non-singular matrix for genres
     from sklearn.linear_model import LogisticRegression
