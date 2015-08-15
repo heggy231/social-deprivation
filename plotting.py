@@ -12,7 +12,6 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from sklearn import (cluster, datasets, decomposition, ensemble, lda, manifold, random_projection, preprocessing)
 import numpy as np
-
 from sklearn.metrics import roc_curve, f1_score,classification_report, accuracy_score,confusion_matrix
 
 def scree_plot(num_components, pca):

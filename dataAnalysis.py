@@ -32,6 +32,8 @@ from sklearn.cluster import KMeans
 import wordcloud as wc
 from sklearn.linear_model import LogisticRegression
 from sklearn.decomposition import TruncatedSVD, PCA   
+import networkx as nx
+
 
 def tokenize(string):
 #    string = string.lower()  
@@ -138,10 +140,10 @@ def make_features(meta):
     features = features.join(twoGrams)
     return features
     
-def print_features(topic, n):
+def print_features(dftopic, n):
     indx = np.argsort(topic)
     rv_indx = indx[::-1]  
-    print features.loc[rv_indx[:n]]['title']
+    print df.loc[rv_indx[:n]]['title']
 
 def kcluster(dataframe, n=3, n_clusters=5):
     X_centered = preprocessing.scale(dataframe.fillna(0))
@@ -165,7 +167,7 @@ if __name__ =='__main__':
     features = load_pickeled_features()
     to_drop=["Prison","Injury","Voluntary",u'Filename', 'actualFilename', u'Author', u'Name of Work',
                   u'Year Written', u'Genre',  u'Deprivation? (Y/N)',u'Type of Deprivation',
-                  'WC','WPS','text','year']#WPS has many outliers in it and does not seem reliable
+                  'WC','WPS','text1']#'text','year'. WPS has many outliers in it and does not seem reliable
     features = features.drop(to_drop,axis=1)
     features=features.drop([13,14],axis=0) #dropping boethius since it seems to be so unique
     features=features.reset_index()   
@@ -180,7 +182,7 @@ if __name__ =='__main__':
     
     
     t=TruncatedSVD(n_components=6)#4 features did well with random forest
-    truncatedFeatures=t.fit_transform(features.fillna(0),y)  
+    truncatedFeatures=t.fit_transform(justDFeatures.fillna(0),y)  
 #    plot_roc(truncatedFeatures,y,LogisticRegression)#does not do well with truncated features
     plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#does well with 4 features
     #plot with true labels
@@ -189,6 +191,11 @@ if __name__ =='__main__':
     plt.scatter(truncatedFeatures.T[0],truncatedFeatures.T[1],c=y)
     plt.scatter(pcaFeatures.T[0],pcaFeatures.T[1],c=y)
     
+    
+    featured_documents = {}
+    for i in range(10):
+        featured_documents[i]=np.argsort(umatrix[i])[:10]
+    justDmeta.reset_index().loc[featured_documents[4]]
 #    Boethius has the two outlying points
     
     '''K-means'''    
@@ -243,7 +250,17 @@ if __name__ =='__main__':
     accuracy_score(ytest,l.predict(xtest))
     classification_report(ytest,l.predict(xtest))
     plot_roc(features.fillna(0),y,LDA)
-
-#parts of speech
-
-#sentiment
+    
+    
+    '''lmer'''
+    import statsmodels.api as sm 
+    import statsmodels.formula.api as smf
+    
+    #data = sm.datasets.get_rdataset("dietox", "geepack").data
+    
+    md = smf.mixedlm("i ~ deprivation", meta, groups=meta["Genre"]) 
+    mdf = md.fit() 
+    
+    print mdf.summary()
+    #parts of speech
+    
