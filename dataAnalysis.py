@@ -10,7 +10,7 @@ from nltk import word_tokenize, pos_tag, Text
 from sklearn.feature_extraction.text import TfidfVectorizer
 #from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
-#from nltk.corpus import stopwords
+from nltk.corpus import stopwords
 #from nltk.stem.porter import PorterStemmer
 from nltk.stem.snowball import SnowballStemmer
 #from nltk.stem.wordnet import WordNetLemmatizer
@@ -140,10 +140,20 @@ def make_features(meta):
     features = features.join(twoGrams)
     return features
     
-def print_features(dftopic, n):
-    indx = np.argsort(topic)
-    rv_indx = indx[::-1]  
-    print df.loc[rv_indx[:n]]['title']
+def print_features(df,metadf, n, columns=0):
+    if not columns:
+        columns=metadf.columns
+    X_centered = preprocessing.scale(df.fillna(0))
+    t=TruncatedSVD(n_components=n+1)#4 features did well with random forest
+    truncatedFeatures=t.fit_transform(X_centered.T)
+    for i in xrange(n):
+        topic=t.components_[i]
+        indx = np.argsort(topic)
+        rv_indx = indx[::-1]  
+        print 'LATENT TOPIC: ',i
+        dataframe=metadf[columns].reset_index().loc[rv_indx[:10]]
+        print dataframe
+    return dataframe
 
 def kcluster(dataframe, n=3, n_clusters=5):
     X_centered = preprocessing.scale(dataframe.fillna(0))
@@ -158,7 +168,7 @@ def kcluster(dataframe, n=3, n_clusters=5):
     
 def makeWordcloud(dataframe,**kwargs):
     w=wc.WordCloud(**kwargs)
-    w.generate_from_text(dataframe.text1.sum())
+    w.generate_from_text(dataframe.text.sum())
     plt.imshow(w)
     return w
     
@@ -173,25 +183,85 @@ if __name__ =='__main__':
     features=features.reset_index()   
     y = features.pop('deprivation')
     y1=y.reset_index(drop=1)
-    justDFeatures = features[y1==1]    
+    justDFeatures = features[y1==1]
+    nDFeatures = features[y1==0]    
     justDmeta   = meta[meta.deprivation==1] 
-    xtrain,xtest,ytrain,ytest = train_test_split(features,y1)
+    nDmeta   = meta[meta.deprivation==0] 
+    
+    liwc = ['funct',
+ u'pronoun',
+ u'ppron',
+ u'i',
+ u'we',
+ u'you',
+ u'shehe',
+ u'they',
+ u'ipron',
+ u'article',
+ u'past',
+ u'present',
+ u'future',
+ u'social',
+ u'family',
+ u'friend',
+ u'humans',
+ u'affect',
+ u'posemo',
+ u'negemo',
+ u'anx',
+ u'anger',
+ u'sad',
+ u'cogmech',
+ u'insight',
+ u'certain',
+ u'percept',
+ u'see',
+ u'hear',
+ u'feel',
+ u'bio',
+ u'body',
+ u'health',
+ u'sexual',
+ u'ingest',
+ u'space',
+ u'time',
+ u'work',
+ u'achieve',
+ u'leisure',
+ u'home',
+ u'death']
+    '''Graph'''
+    G=nx.Graph(data=cosine_similarity(meta[liwc]))
+         
     '''Dimensionality Reduction'''
     p=PCA(n_components=3)
     pcaFeatures=p.fit_transform(features.fillna(0),y)
     
     
-    t=TruncatedSVD(n_components=6)#4 features did well with random forest
+    t=TruncatedSVD(n_components=10)#4 features did well with random forest
     truncatedFeatures=t.fit_transform(justDFeatures.fillna(0),y)  
-#    plot_roc(truncatedFeatures,y,LogisticRegression)#does not do well with truncated features
-    plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#does well with 4 features
-    #plot with true labels
-    t=TruncatedSVD(n_components=2)
-    truncatedFeatures=t.fit_transform(features.fillna(0),y)
-    plt.scatter(truncatedFeatures.T[0],truncatedFeatures.T[1],c=y)
-    plt.scatter(pcaFeatures.T[0],pcaFeatures.T[1],c=y)
+##    plot_roc(truncatedFeatures,y,LogisticRegression)#does not do well with truncated features
+#    plot_roc(truncatedFeatures,y,RandomForestClassifier,n_estimators=1000)#does well with 4 features
+#    #plot with true labels
+#    t=TruncatedSVD(n_components=2)
+#    truncatedFeatures=t.fit_transform(features.fillna(0),y)
+#    plt.scatter(truncatedFeatures.T[0],truncatedFeatures.T[1],c=y)
+#    plt.scatter(pcaFeatures.T[0],pcaFeatures.T[1],c=y)
     
-    
+    cols = ['Author',
+     'Genre',
+     'year',
+     'Name of Work',
+     'deprivation',
+     'Type of Deprivation',
+     u'funct',
+     u'pronoun',
+     u'ppron',
+     u'i',
+     u'we']
+    sw = stopwords.words('english')+['one','would']
+    makeWordcloud(print_features(justDFeatures,justDmeta,1), stopwords=sw,ranks_only=1,width=800,height=400)
+    makeWordcloud(print_features(nDFeatures,nDmeta,1), stopwords=sw,ranks_only=1,width=800,height=400)
     featured_documents = {}
     for i in range(10):
         featured_documents[i]=np.argsort(umatrix[i])[:10]
@@ -215,6 +285,9 @@ if __name__ =='__main__':
     plot_embedding(X_pca, y)
     k.plot_k_sse(X_pca) #for 2 components 5 clusters
 
+    ''' Supervised Learning'''
+    
+    xtrain,xtest,ytrain,ytest = train_test_split(features,y1)
     '''Naive Bayes'''
     #assuming that there is colinearity
 #    m = MultinomialNB()
@@ -224,8 +297,16 @@ if __name__ =='__main__':
     plot_roc(truncatedFeatures,y,MultinomialNB,n_folds=5)
     plot_roc(truncatedFeatures,y,BernoulliNB,n_folds=5)#performs horrbily
     '''Logit'''
-    plot_roc(features.fillna(0),y1,LogisticRegression)
-  
+    #Nonfiction seems unpredictable, while fiction is somewhat predictable letters
+    for genre in set(meta.Genre):
+        df=meta[meta.Genre==genre].reset_index()
+        if len(df)>10:
+            y=df.pop('deprivation')
+            print genre
+#            p.plot_roc(df[liwc].fillna(0),y,LogisticRegression)
+#            p.plot_roc(df[liwc].fillna(0),y,RandomForestClassifier)
+            
+      
     '''Random Forest'''
     r = RandomForestClassifier(class_weight='auto',n_estimators=1000)
     r.fit(xtrain.fillna(0),ytrain)
