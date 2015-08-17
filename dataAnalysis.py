@@ -13,8 +13,6 @@ from nltk.stem.snowball import SnowballStemmer
 from sklearn.linear_model import LogisticRegression
 from statsmodels.discrete.discrete_model import Logit
 from sklearn.cross_validation import train_test_split
-from sklearn.metrics import (classification_report,
-                             accuracy_score, confusion_matrix)
 import matplotlib.pyplot as plt
 from sklearn import (
     cluster,
@@ -61,20 +59,6 @@ def twoGram(string, wordList):
                 out[tokens[i - 1] + '_' + token] += invWordCount
                 out[token + '_' + tokens[i + 1]] += invWordCount
     return pd.Series(out)
-
-
-def assess_model(model, xtest, ytest):
-    predictions = model.predict(xtest)
-#    tp = sum(predictions*ytest)
-#    fn = sum((1-predictions)*ytest)
-#    tn = sum((1-predictions)*(1-ytest))
-#    fp = sum(predictions*(1-ytest))
-#    p = sum(ytest)
-#    f = sum(1-ytest)
-    print 'accuracy: ', accuracy_score(ytest, predictions)
-    print classification_report(ytest, predictions)
-    print 'confusion matrix: '
-    print confusion_matrix(ytest, predictions)
 
 
 def match_filenames(filename, listOfFilenames):
@@ -179,7 +163,7 @@ def kcluster(dataframe, n=3, n_clusters=5):
     pca = decomposition.PCA(n_components=n)
     X_pca = pca.fit_transform(X_centered)
     kpy.plot_k_sse(X_pca)
-    k = KMeans(n_clusters=n_clusters)  # 5 is at an elbow for sse in 2-d
+    k = KMeans(n_clusters=n_clusters)
     km = k.fit_transform(X_pca)
     plt.hist(k.labels_)
     return pca, X_pca, k, km
@@ -304,6 +288,7 @@ if __name__ == '__main__':
     k = KMeans(n_clusters=5)  # 5 is at an elbow for sse in 2-d
     km = k.fit_transform(truncatedFeatures)
 
+    '''PCA'''
     pca, X_pca, k, km = kcluster(justDFeatures, n_clusters=8)
     print features.columns[np.argsort(pca.components_[0])[:100]]
 
@@ -315,18 +300,9 @@ if __name__ == '__main__':
     k.plot_k_sse(X_pca)  # for 2 components 5 clusters
 
     ''' Supervised Learning'''
-
-    '''Naive Bayes'''
-    # assuming that there is colinearity
-#    m = MultinomialNB()
-#    m.fit(xtrain,ytrain)
-    plot_roc(features.fillna(0), y, MultinomialNB, n_folds=5)
-    plot_roc(features.fillna(0), y, BernoulliNB, n_folds=5)
-    plot_roc(truncatedFeatures, y, MultinomialNB, n_folds=5)
-    plot_roc(truncatedFeatures, y, BernoulliNB, n_folds=5)  # performs horrbily
-    '''Logit'''
+    # Logistic Regression and Random Forest seem to perform the best
     # Nonfiction seems unpredictable, while fiction, letters and poetry
-    # is somewhat predictabe
+    # are somewhat predictabe
     for genre in set(meta.Genre):
         df = meta[meta.Genre == genre].reset_index()
         if len(df) > 20:
@@ -335,15 +311,3 @@ if __name__ == '__main__':
             p.plot_roc(df[liwc].fillna(0), y, LogisticRegression)
             print genre, 'Random Forest'
             p.plot_roc(df[liwc].fillna(0), y, RandomForestClassifier)
-
-    '''Random Forest'''
-    plot_roc(features.fillna(0), y, RandomForestClassifier, n_estimators=100)
-
-    '''lmer'''
-    import statsmodels.api as sm
-    import statsmodels.formula.api as smf
-
-    md = smf.mixedlm("i ~ deprivation", meta, groups=meta["Genre"])
-    mdf = md.fit()
-
-    print mdf.summary()

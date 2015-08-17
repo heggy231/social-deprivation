@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Aug 13 11:35:53 2015
-
-@author: d
+Collected functions useful for plotting ROC, scree, etc.
 """
 
 from sklearn.metrics import roc_curve, auc
